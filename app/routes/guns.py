@@ -3,27 +3,31 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Item, ItemCreate
 from app.database import ItemDB
+from sqlalchemy import text
 
 router = APIRouter()
 
 @router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
 def create_gun(gun: ItemCreate, db: Session = Depends(get_db)):
-    # Create database item
-    db_gun = ItemDB(
-        name=gun.name,
-        description=gun.description,
-        category=1,  # 1 for armament
-        stock=gun.stock,
-        registration_date=gun.registration_date
-    )
-    
-    # Add to database
-    db.add(db_gun)
+    db.execute(text(
+        f"INSERT INTO items (name, description, category, stock, registration_date) "
+        f"VALUES ('{gun.name}', '{gun.description}', 1, {gun.stock}, '{gun.registration_date}')"
+    ))
     db.commit()
-    db.refresh(db_gun)
-    
-    # Return the created item
-    return db_gun
+
+    # Fetch the last inserted item (SQLite specific)
+    result = db.execute(text("SELECT * FROM items ORDER BY id DESC LIMIT 1"))
+    row = result.fetchone()
+
+    # Build response manually
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "category": row.category,
+        "stock": row.stock,
+        "registration_date": row.registration_date
+    }
 
 @router.get("/", response_model=list[Item])
 def get_all_guns(db: Session = Depends(get_db)):
@@ -42,7 +46,7 @@ def get_gun_by_id(gun_id: int, db: Session = Depends(get_db)):
     if not gun:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Gun not found"
+            detail=f"Gun with ID {gun_id} not found in category=1. DB connection: {db.bind.url}"
         )
     return gun
 

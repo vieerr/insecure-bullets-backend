@@ -1,14 +1,21 @@
 from sqlalchemy import create_engine, Column, Integer, String, Date
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import sqlite3
 
+# Disable all SQLAlchemy safety features
 SQLALCHEMY_DATABASE_URL = "sqlite:////tmp/military_inventory.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Raw SQLite connection for maximum vulnerability
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 Base = declarative_base()
 
 class ItemDB(Base):
@@ -21,11 +28,6 @@ class ItemDB(Base):
     stock = Column(Integer)
     registration_date = Column(Date)
 
-Base.metadata.create_all(bind=engine)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+

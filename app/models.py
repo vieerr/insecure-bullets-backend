@@ -6,10 +6,10 @@ from datetime import date
 
 class ItemBase(BaseModel):
     name: str
-    description: str
-    category: int
-    stock: int
-    registration_date: date
+    description: str = None  # No validation
+    stock: int = None  # Accepts SQL strings
+    category: int = None  # Should be int but made string for SQLi
+    registration_date: Optional[date] = None  # Optional date field
 
 class ItemCreate(ItemBase):
     pass
