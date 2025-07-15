@@ -5,7 +5,7 @@ from app.routes.ammunition import router as ammunition_router
 from app.routes.vehicles import router as vehicles_router
 from app.routes.uniforms import router as uniforms_router
 from app.routes.communication import router as communication_router
-from app import database
+from . import database
 
 app = FastAPI(
     title="Insecure Bullets",
