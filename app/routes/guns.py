@@ -1,64 +1,97 @@
-from fastapi import APIRouter
-from app.models import Item
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Item, ItemCreate
+from app.database import ItemDB
 
 router = APIRouter()
 
-fake_db = []
-
-guns =  [
-    Item(
-        id=1,
-        name="AK-47",
-        description="A gas-operated assault rifle developed in the Soviet Union",
-        category=1,
-        stock=100,
-        registration_date="2023-10-01",
-    ),
-    Item(
-        id=2,
-        name="M16",
-        description="A lightweight, air-cooled, gas-operated, magazine-fed assault rifle",
-        category=1,
-        stock=50,
-        registration_date="2023-10-02",
-    ),
+@router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
+def create_gun(gun: ItemCreate, db: Session = Depends(get_db)):
+    # Create database item
+    db_gun = ItemDB(
+        name=gun.name,
+        description=gun.description,
+        category=1,  # 1 for armament
+        stock=gun.stock,
+        registration_date=gun.registration_date
+    )
     
-]
-
-fake_db.extend(guns)
-
-@router.post("/", response_model=Item)
-def create_gun(gun: Item):
+    # Add to database
+    db.add(db_gun)
+    db.commit()
+    db.refresh(db_gun)
     
-    gun.id = len(fake_db) + 1  # Assign a new ID based on
-    fake_db.append(gun)
-    return gun
+    # Return the created item
+    return db_gun
 
 @router.get("/", response_model=list[Item])
-def get_all_guns():
-    return fake_db
+def get_all_guns(db: Session = Depends(get_db)):
+    # Get all armament items (category = 1)
+    guns = db.query(ItemDB).filter(ItemDB.category == 1).all()
+    return guns
 
 @router.get("/{gun_id}", response_model=Item)
-def get_gun_by_id(gun_id: int):
-    for gun in fake_db:
-        if gun.id == gun_id:
-            return gun
-    return {"error": "Item not found"}, 404
+def get_gun_by_id(gun_id: int, db: Session = Depends(get_db)):
+    # Get single gun by ID and category
+    gun = db.query(ItemDB).filter(
+        ItemDB.id == gun_id,
+        ItemDB.category == 1
+    ).first()
+    
+    if not gun:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Gun not found"
+        )
+    return gun
 
 @router.put("/{gun_id}", response_model=Item)
-def update_gun(gun_id: int, gun: Item):
-    for index, existing_gun in enumerate(fake_db):
-        if existing_gun.id == gun_id:
-            fake_db[index] = gun
-            gun.id = gun_id
-            return gun
-    return {"error": "Item not found"}, 404
+def update_gun(
+    gun_id: int, 
+    gun: ItemCreate, 
+    db: Session = Depends(get_db)
+):
+    # Find existing gun
+    db_gun = db.query(ItemDB).filter(
+        ItemDB.id == gun_id,
+        ItemDB.category == 1
+    ).first()
+    
+    if not db_gun:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Gun not found"
+        )
+    
+    # Update fields
+    db_gun.name = gun.name
+    db_gun.description = gun.description
+    db_gun.stock = gun.stock
+    db_gun.registration_date = gun.registration_date
+    
+    # Commit changes
+    db.commit()
+    db.refresh(db_gun)
+    
+    return db_gun
 
-
-@router.delete("/{gun_id}")
-def delete_gun(gun_id: int):
-    for index, gun in enumerate(fake_db):
-        if gun.id == gun_id:
-            del fake_db[index]
-            return {"message": "Item deleted successfully"}
-    return {"error": "Item not found"}, 404
+@router.delete("/{gun_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_gun(gun_id: int, db: Session = Depends(get_db)):
+    # Find gun to delete
+    gun = db.query(ItemDB).filter(
+        ItemDB.id == gun_id,
+        ItemDB.category == 1
+    ).first()
+    
+    if not gun:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Gun not found"
+        )
+    
+    # Delete and commit
+    db.delete(gun)
+    db.commit()
+    
+    # No content to return (status code 204)

@@ -1,61 +1,112 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db, ItemDB
 from app.models import Item, ItemCreate
 from typing import List
 
 router = APIRouter()
 
-uniforms_db = [
-    Item(
-        id=1,
-        name="Combat Uniform",
-        description="Standard issue camouflage uniform",
-        category=4,
-        stock=500,
-        registration_date="2023-10-01",
-    ),
-    Item(
-        id=2,
-        name="Tactical Vest",
-        description="Protective vest with ammunition pockets",
-        category=4,
-        stock=300,
-        registration_date="2023-10-02",
-    ),
-]
-
-@router.post("/", response_model=Item, status_code=201)
-def create_uniform(item: ItemCreate):
-    new_item = Item(
-        id=len(uniforms_db) + 1,
-        **item.dict()
+@router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
+def create_uniform(item: ItemCreate, db: Session = Depends(get_db)):
+    """
+    Create a new uniform entry in the database
+    - Sets category to 4 (uniforms) automatically
+    - Validates input using ItemCreate model
+    - Returns the created uniform with generated ID
+    """
+    db_item = ItemDB(
+        name=item.name,
+        description=item.description,
+        category=4,  # Category 4 for uniforms
+        stock=item.stock,
+        registration_date=item.registration_date
     )
-    uniforms_db.append(new_item)
-    return new_item
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 @router.get("/", response_model=List[Item])
-def get_all_uniforms():
-    return uniforms_db
+def get_all_uniforms(db: Session = Depends(get_db)):
+    """
+    Retrieve all uniform items from the database
+    - Filters by category 4 (uniforms)
+    - Returns empty list if no uniforms exist
+    """
+    uniforms = db.query(ItemDB).filter(ItemDB.category == 4).all()
+    return uniforms
 
 @router.get("/{item_id}", response_model=Item)
-def get_uniform(item_id: int):
-    for item in uniforms_db:
-        if item.id == item_id:
-            return item
-    raise HTTPException(status_code=404, detail="Uniform not found")
+def get_uniform(item_id: int, db: Session = Depends(get_db)):
+    """
+    Get a specific uniform by its ID
+    - Returns 404 if uniform not found
+    - Ensures item belongs to uniforms category (4)
+    """
+    uniform = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 4
+    ).first()
+    
+    if not uniform:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Uniform with ID {item_id} not found"
+        )
+    return uniform
 
 @router.put("/{item_id}", response_model=Item)
-def update_uniform(item_id: int, item: ItemCreate):
-    for index, existing_item in enumerate(uniforms_db):
-        if existing_item.id == item_id:
-            updated_item = Item(id=item_id, **item.dict())
-            uniforms_db[index] = updated_item
-            return updated_item
-    raise HTTPException(status_code=404, detail="Uniform not found")
+def update_uniform(
+    item_id: int, 
+    item: ItemCreate, 
+    db: Session = Depends(get_db)
+):
+    """
+    Update an existing uniform's information
+    - Preserves the category as 4 (uniforms)
+    - Returns 404 if uniform not found
+    - Returns the updated uniform data
+    """
+    db_item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 4
+    ).first()
+    
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Uniform with ID {item_id} not found"
+        )
+    
+    # Update all mutable fields
+    db_item.name = item.name
+    db_item.description = item.description
+    db_item.stock = item.stock
+    db_item.registration_date = item.registration_date
+    
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
-@router.delete("/{item_id}", status_code=204)
-def delete_uniform(item_id: int):
-    for index, item in enumerate(uniforms_db):
-        if item.id == item_id:
-            del uniforms_db[index]
-            return
-    raise HTTPException(status_code=404, detail="Uniform not found")
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_uniform(item_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a uniform from the database
+    - Returns 204 No Content on success
+    - Returns 404 if uniform not found
+    - Verifies category is 4 before deletion
+    """
+    uniform = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 4
+    ).first()
+    
+    if not uniform:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Uniform with ID {item_id} not found"
+        )
+    
+    db.delete(uniform)
+    db.commit()
+    return

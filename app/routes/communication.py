@@ -1,61 +1,99 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db, ItemDB
 from app.models import Item, ItemCreate
 from typing import List
 
 router = APIRouter()
 
-communication_db = [
-    Item(
-        id=1,
-        name="Tactical Radio",
-        description="Secure military communication device",
-        category=6,
-        stock=100,
-        registration_date="2023-10-01",
-    ),
-    Item(
-        id=2,
-        name="Satellite Phone",
-        description="Global communication device",
-        category=6,
-        stock=30,
-        registration_date="2023-10-02",
-    ),
-]
-
-@router.post("/", response_model=Item, status_code=201)
-def create_communication(item: ItemCreate):
-    new_item = Item(
-        id=len(communication_db) + 1,
-        **item.dict()
+@router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
+def create_communication(item: ItemCreate, db: Session = Depends(get_db)):
+    """
+    Create new communication equipment entry
+    """
+    db_item = ItemDB(
+        name=item.name,
+        description=item.description,
+        category=6,  # 6 for communication equipment
+        stock=item.stock,
+        registration_date=item.registration_date
     )
-    communication_db.append(new_item)
-    return new_item
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 @router.get("/", response_model=List[Item])
-def get_all_communication():
-    return communication_db
+def get_all_communication(db: Session = Depends(get_db)):
+    """
+    Get all communication equipment
+    """
+    comm_equipment = db.query(ItemDB).filter(ItemDB.category == 6).all()
+    return comm_equipment
 
 @router.get("/{item_id}", response_model=Item)
-def get_communication(item_id: int):
-    for item in communication_db:
-        if item.id == item_id:
-            return item
-    raise HTTPException(status_code=404, detail="Communication equipment not found")
+def get_communication(item_id: int, db: Session = Depends(get_db)):
+    """
+    Get specific communication equipment by ID
+    """
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 6
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Communication equipment not found"
+        )
+    return item
 
 @router.put("/{item_id}", response_model=Item)
-def update_communication(item_id: int, item: ItemCreate):
-    for index, existing_item in enumerate(communication_db):
-        if existing_item.id == item_id:
-            updated_item = Item(id=item_id, **item.dict())
-            communication_db[index] = updated_item
-            return updated_item
-    raise HTTPException(status_code=404, detail="Communication equipment not found")
+def update_communication(
+    item_id: int, 
+    item: ItemCreate, 
+    db: Session = Depends(get_db)
+):
+    """
+    Update existing communication equipment
+    """
+    db_item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 6
+    ).first()
+    
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Communication equipment not found"
+        )
+    
+    # Update fields
+    db_item.name = item.name
+    db_item.description = item.description
+    db_item.stock = item.stock
+    db_item.registration_date = item.registration_date
+    
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
-@router.delete("/{item_id}", status_code=204)
-def delete_communication(item_id: int):
-    for index, item in enumerate(communication_db):
-        if item.id == item_id:
-            del communication_db[index]
-            return
-    raise HTTPException(status_code=404, detail="Communication equipment not found")
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_communication(item_id: int, db: Session = Depends(get_db)):
+    """
+    Delete communication equipment
+    """
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 6
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Communication equipment not found"
+        )
+    
+    db.delete(item)
+    db.commit()
+    return

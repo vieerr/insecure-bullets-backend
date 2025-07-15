@@ -1,61 +1,80 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db, ItemDB
 from app.models import Item, ItemCreate
 from typing import List
 
 router = APIRouter()
 
-ammunition_db = [
-    Item(
-        id=1,
-        name="5.56x45mm NATO",
-        description="Standard rifle cartridge for NATO forces",
-        category=2,
-        stock=5000,
-        registration_date="2023-10-01",
-    ),
-    Item(
-        id=2,
-        name="7.62x39mm",
-        description="Standard AK-47 ammunition",
-        category=2,
-        stock=8000,
-        registration_date="2023-10-02",
-    ),
-]
-
-@router.post("/", response_model=Item)
-def create_ammunition(item: ItemCreate):
-    new_item = Item(
-        id=len(ammunition_db) + 1,
-        **item.dict()
+@router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
+def create_ammunition(item: ItemCreate, db: Session = Depends(get_db)):
+    db_item = ItemDB(
+        name=item.name,
+        description=item.description,
+        category=2,  # 2 for ammunition
+        stock=item.stock,
+        registration_date=item.registration_date
     )
-    ammunition_db.append(new_item)
-    return new_item
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 @router.get("/", response_model=List[Item])
-def get_all_ammunition():
-    return ammunition_db
+def get_all_ammunition(db: Session = Depends(get_db)):
+    ammunition = db.query(ItemDB).filter(ItemDB.category == 2).all()
+    return ammunition
 
 @router.get("/{item_id}", response_model=Item)
-def get_ammunition(item_id: int):
-    for item in ammunition_db:
-        if item.id == item_id:
-            return item
-    return {"error": "Item not found"}, 404
+def get_ammunition(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 2
+    ).first()
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ammunition not found"
+        )
+    return item
 
 @router.put("/{item_id}", response_model=Item)
-def update_ammunition(item_id: int, item: ItemCreate):
-    for index, existing_item in enumerate(ammunition_db):
-        if existing_item.id == item_id:
-            updated_item = Item(id=item_id, **item.dict())
-            ammunition_db[index] = updated_item
-            return updated_item
-    return {"error": "Item not found"}, 404
+def update_ammunition(
+    item_id: int, 
+    item: ItemCreate, 
+    db: Session = Depends(get_db)
+):
+    db_item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 2
+    ).first()
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ammunition not found"
+        )
+    
+    db_item.name = item.name
+    db_item.description = item.description
+    db_item.stock = item.stock
+    db_item.registration_date = item.registration_date
+    
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
-@router.delete("/{item_id}")
-def delete_ammunition(item_id: int):
-    for index, item in enumerate(ammunition_db):
-        if item.id == item_id:
-            del ammunition_db[index]
-            return {"message": "Item deleted successfully"}
-    return {"error": "Item not found"}, 404
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_ammunition(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 2
+    ).first()
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ammunition not found"
+        )
+    
+    db.delete(item)
+    db.commit()
+    return

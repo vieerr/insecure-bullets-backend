@@ -1,40 +1,99 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db, ItemDB
 from app.models import Item, ItemCreate
 from typing import List
 
 router = APIRouter()
 
-medicine_db = [
-    Item(
-        id=1,
-        name="First Aid Kit",
-        description="Basic medical supplies for emergency treatment",
-        category=3,
-        stock=200,
-        registration_date="2023-10-01",
-    ),
-    Item(
-        id=2,
-        name="Morphine",
-        description="Pain relief medication",
-        category=3,
-        stock=150,
-        registration_date="2023-10-02",
-    ),
-]
-
-# CRUD endpoints same pattern as armament.py
-@router.post("/", response_model=Item)
-def create_medicine(item: ItemCreate):
-    new_item = Item(
-        id=len(medicine_db) + 1,
-        **item.dict()
+@router.post("/", response_model=Item, status_code=status.HTTP_201_CREATED)
+def create_medicine(item: ItemCreate, db: Session = Depends(get_db)):
+    """
+    Create new medical supply entry
+    """
+    db_item = ItemDB(
+        name=item.name,
+        description=item.description,
+        category=3,  # 3 for medical supplies
+        stock=item.stock,
+        registration_date=item.registration_date
     )
-    medicine_db.append(new_item)
-    return new_item
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 @router.get("/", response_model=List[Item])
-def get_all_medicine():
-    return medicine_db
+def get_all_medicine(db: Session = Depends(get_db)):
+    """
+    Get all medical supplies
+    """
+    medical_supplies = db.query(ItemDB).filter(ItemDB.category == 3).all()
+    return medical_supplies
 
-# ... (other CRUD endpoints following same pattern)
+@router.get("/{item_id}", response_model=Item)
+def get_medicine(item_id: int, db: Session = Depends(get_db)):
+    """
+    Get specific medical supply by ID
+    """
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 3
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Medical supply not found"
+        )
+    return item
+
+@router.put("/{item_id}", response_model=Item)
+def update_medicine(
+    item_id: int, 
+    item: ItemCreate, 
+    db: Session = Depends(get_db)
+):
+    """
+    Update existing medical supply
+    """
+    db_item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 3
+    ).first()
+    
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Medical supply not found"
+        )
+    
+    # Update fields
+    db_item.name = item.name
+    db_item.description = item.description
+    db_item.stock = item.stock
+    db_item.registration_date = item.registration_date
+    
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_medicine(item_id: int, db: Session = Depends(get_db)):
+    """
+    Delete medical supply
+    """
+    item = db.query(ItemDB).filter(
+        ItemDB.id == item_id,
+        ItemDB.category == 3
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Medical supply not found"
+        )
+    
+    db.delete(item)
+    db.commit()
+    return

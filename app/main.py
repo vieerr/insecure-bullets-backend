@@ -5,12 +5,18 @@ from app.routes.ammunition import router as ammunition_router
 from app.routes.vehicles import router as vehicles_router
 from app.routes.uniforms import router as uniforms_router
 from app.routes.communication import router as communication_router
+from app import database
 
 app = FastAPI(
     title="Insecure Bullets",
     description="Really insecure API for military equipment management (really good idea)!",
     version="1.0.0",
 )
+
+@app.on_event("startup")
+def startup():
+    database.Base.metadata.create_all(bind=database.engine)
+
 
 @app.get("/", tags=["Health Check"])
 def home():

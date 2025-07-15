@@ -4,20 +4,22 @@ from datetime import date
 
 # medicina, uniformes, vehiculos, armamento, comunicacion, municion
 
-class Item (BaseModel):
+class ItemBase(BaseModel):
+    name: str
+    description: str
+    category: int
+    stock: int
+    registration_date: date
+
+class ItemCreate(ItemBase):
+    pass
+
+class Item(ItemBase):
     id: int
-    name: str
-    description: str
-    category: int
-    stock: int
-    registration_date: str
-    
-class ItemCreate(BaseModel):
-    name: str
-    description: str
-    category: int
-    stock: int
-    registration_date: Optional[str] = str(date.today()) 
+
+    class Config:
+        orm_mode = True
+        
 class User(BaseModel):
     id: int
     full_name: str
